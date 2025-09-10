@@ -154,6 +154,9 @@ def handle_message(event):
                     print(f"❌ LINE 立即通知失敗: {e}")
 
     else:
+        user_id = event.source.user_id
+        print(user_id)
+        print()
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
