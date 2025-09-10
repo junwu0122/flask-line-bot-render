@@ -2,78 +2,90 @@
 import yfinance as yf
 import requests
 import twstock
-from datetime import datetime
 from stock_mongo import update_current_price
+import os
+import datetime
 
-
-def is_trading_time():
-    """
-    判斷是否為台股交易時間 (09:00 ~ 13:30)
-    """
-    now = datetime.now()
-    return (now.hour > 9 or (now.hour == 9 and now.minute >= 0)) and (now.hour < 13 or (now.hour == 13 and now.minute <= 30))
-
+FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
+FINMIND_TOKEN = os.getenv("FINMIND_TOKEN")  # 可放在 .env
 
 def get_current_price(stock_id: str):
     """
-    嘗試用 yfinance / twstock / twse API 取得即時股價
-    收盤後 fallback -> 昨日收盤價
+    嘗試用 yfinance / twstock / twse API / FinMind 取得股價
     """
 
-    # ✅ 先檢查是不是交易時間
-    trading = is_trading_time()
-
-    # 如果是交易時間，優先嘗試即時股價
-    if trading:
-        # yfinance .TW
-        try:
-            ticker = yf.Ticker(f"{stock_id}.TW")
-            data = ticker.history(period="1d", interval="1m")
-            if not data.empty:
-                current_price = round(data["Close"].iloc[-1], 2)
-                print(f"✅ {stock_id}.TW (yfinance 即時) 現價: {current_price}")
-                return current_price
-        except Exception as e:
-            print(f"❌ yfinance {stock_id}.TW 即時失敗: {e}")
-
-        # twstock
-        try:
-            stock = twstock.realtime.get(stock_id)
-            if stock and stock.get("success"):
-                price = stock["realtime"].get("latest_trade_price")
-                if price and price != "-":
-                    current_price = float(price)
-                    print(f"✅ {stock_id} (twstock) 現價: {current_price}")
-                    return current_price
-            print(f"❌ twstock 無法取得 {stock_id} 即時股價")
-        except Exception as e:
-            print(f"❌ twstock 取得 {stock_id} 失敗: {e}")
-
-        # TWSE API
-        try:
-            url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{stock_id}.tw"
-            r = requests.get(url, timeout=5, verify=False)
-            data = r.json()
-            if "msgArray" in data and len(data["msgArray"]) > 0:
-                price = data["msgArray"][0].get("z")
-                if price and price != "-":
-                    current_price = float(price)
-                    print(f"✅ {stock_id} (twse api) 現價: {current_price}")
-                    return current_price
-            print(f"❌ twse api 無法取得 {stock_id} 即時股價")
-        except Exception as e:
-            print(f"❌ twse api 取得 {stock_id} 失敗: {e}")
-
-    # 🚨 如果不是交易時間，或即時價都拿不到 → fallback 到昨日收盤
+    # 1️⃣ yfinance .TW
     try:
         ticker = yf.Ticker(f"{stock_id}.TW")
-        data = ticker.history(period="5d")
+        data = ticker.history(period="1d")
         if not data.empty:
-            close_price = round(data["Close"].iloc[-1], 2)
-            print(f"🌙 {stock_id}.TW (收盤價 fallback) 昨日收盤: {close_price}")
-            return close_price
+            current_price = round(data["Close"].iloc[-1], 2)
+            print(f"✅ {stock_id}.TW (yfinance) 現價: {current_price}")
+            return current_price
     except Exception as e:
-        print(f"❌ yfinance {stock_id}.TW 收盤價失敗: {e}")
+        print(f"❌ yfinance {stock_id}.TW 失敗: {e}")
+
+    # 2️⃣ yfinance .TWO
+    try:
+        ticker = yf.Ticker(f"{stock_id}.TWO")
+        data = ticker.history(period="1d")
+        if not data.empty:
+            current_price = round(data["Close"].iloc[-1], 2)
+            print(f"✅ {stock_id}.TWO (yfinance) 現價: {current_price}")
+            return current_price
+    except Exception as e:
+        print(f"❌ yfinance {stock_id}.TWO 失敗: {e}")
+
+    # 3️⃣ twstock
+    try:
+        stock = twstock.realtime.get(stock_id)
+        if stock and stock.get("success"):
+            price = stock["realtime"].get("latest_trade_price")
+            if price and price != "-":
+                current_price = float(price)
+                print(f"✅ {stock_id} (twstock) 現價: {current_price}")
+                return current_price
+        print(f"❌ twstock 無法取得 {stock_id} 即時股價")
+    except Exception as e:
+        print(f"❌ twstock 取得 {stock_id} 失敗: {e}")
+
+    # 4️⃣ TWSE API
+    try:
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{stock_id}.tw"
+        r = requests.get(url, timeout=5, verify=False)  # 忽略 SSL 警告
+        data = r.json()
+        if "msgArray" in data and len(data["msgArray"]) > 0:
+            price = data["msgArray"][0].get("z")
+            if price and price != "-":
+                current_price = float(price)
+                print(f"✅ {stock_id} (twse api) 現價: {current_price}")
+                return current_price
+        print(f"❌ twse api 無法取得 {stock_id} 即時股價")
+    except Exception as e:
+        print(f"❌ twse api 取得 {stock_id} 失敗: {e}")
+
+    # 5️⃣ FinMind (收盤價)
+    try:
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        params = {
+            "dataset": "TaiwanStockPrice",
+            "data_id": stock_id,
+            "start_date": today,
+        }
+        if FINMIND_TOKEN:
+            params["token"] = FINMIND_TOKEN
+
+        r = requests.get(FINMIND_URL, params=params, timeout=5)
+        data = r.json()
+        if "data" in data and len(data["data"]) > 0:
+            last = data["data"][-1]
+            current_price = float(last["close"])
+            print(f"✅ {stock_id} (FinMind) 收盤價: {current_price}")
+            return current_price
+        else:
+            print(f"❌ FinMind 無法取得 {stock_id} 股價, msg={data.get('msg')}")
+    except Exception as e:
+        print(f"❌ FinMind 取得 {stock_id} 失敗: {e}")
 
     print(f"⚠️ 無法取得 {stock_id} 任何股價")
     return None
@@ -82,6 +94,8 @@ def get_current_price(stock_id: str):
 def check_price(stock_name, operator, target_price, current_price=None):
     """
     比對價格條件
+    - 會優先用 DB 傳進來的 current_price
+    - 如果沒給就去抓最新股價
     """
     try:
         if current_price is None:
