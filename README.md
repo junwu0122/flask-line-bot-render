@@ -60,6 +60,9 @@ MONGO_DB_NAME=你的database名字
 - Atlas → Network Access → Add IP Address → 建議先填 0.0.0.0/0 測試（注意安全），或把 Render 提供的一組可用 IP 新增進去。
 
 - 等待幾分鐘讓設定生效。
+
+
+
 💬 LINE 指令範例
 
 2330 高於 500 → 新增提醒
