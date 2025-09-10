@@ -9,12 +9,22 @@ from linebot.models import TextSendMessage
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "stocks")  # 預設 stocks
+MONGO_COLLECTION_NAME = os.getenv("MONGO_COLLECTION_NAME", "stock_db")  # 預設 stock_db
+
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_USER_ID = os.getenv("LINE_USER_ID")
 
-client = MongoClient(MONGO_URI)
-db = client["Jun"]
-collection = db["stock"]
+# 建立 MongoDB 連線
+try:
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tls=True)
+    client.admin.command("ping")
+    print("✅ 成功連線 MongoDB Atlas")
+except Exception as e:
+    print(f"❌ MongoDB 連線失敗: {e}")
+
+db = client[MONGO_DB_NAME]
+collection = db[MONGO_COLLECTION_NAME]
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 
@@ -65,10 +75,12 @@ def mark_notified(stock_id):
         {"$set": {"notified": True}}
     )
 
+
 def delete_stock(stock_name):
     """刪除某股票的所有提醒"""
     result = collection.delete_many({"stock_name": stock_name})
     return result.deleted_count
+
 
 def update_current_price(stock_name, price):
     """更新某股票的現價"""
