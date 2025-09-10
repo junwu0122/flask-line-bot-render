@@ -13,7 +13,8 @@ future==0.18.2
 idna==2.10
 Werkzeug==1.0.1
 python-dotenv
-pymongo
+pymongo[srv]==4.8.0
+dnspython==2.6.1
 yfinance
 schedule
 twstock
