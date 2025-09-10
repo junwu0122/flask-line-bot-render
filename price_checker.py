@@ -19,7 +19,7 @@ def get_price_from_finmind(stock_id: str):
         params = {
             "dataset": "TaiwanStockPrice",
             "stock_id": stock_id,
-            "date": today,
+            "start_date": today,   
         }
         headers = {"authorization": f"Bearer {FINMIND_TOKEN}"}
         r = requests.get(url, params=params, headers=headers, timeout=10)
@@ -35,6 +35,7 @@ def get_price_from_finmind(stock_id: str):
     except Exception as e:
         print(f"❌ FinMind API 失敗: {e}")
         return None
+
 
 
 def get_current_price(stock_id: str):
