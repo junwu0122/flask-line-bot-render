@@ -1,20 +1,47 @@
 # price_checker.py
+import os
 import yfinance as yf
 import requests
 import twstock
+from datetime import datetime
 from stock_mongo import update_current_price
-import os
-import datetime
 
-FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = os.getenv("FINMIND_TOKEN")  # 可放在 .env
+FINMIND_TOKEN = os.getenv("FINMIND_TOKEN")
+
+
+def get_price_from_finmind(stock_id: str):
+    """
+    使用 FinMind 取得台股收盤價（最後一層 fallback）
+    """
+    try:
+        url = "https://api.finmindtrade.com/api/v4/data"
+        today = datetime.today().strftime("%Y-%m-%d")
+        params = {
+            "dataset": "TaiwanStockPrice",
+            "stock_id": stock_id,
+            "date": today,
+        }
+        headers = {"authorization": f"Bearer {FINMIND_TOKEN}"}
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        data = r.json()
+
+        if data.get("msg") == "success" and len(data.get("data", [])) > 0:
+            price = float(data["data"][-1]["close"])
+            print(f"✅ {stock_id} (FinMind) 收盤價: {price}")
+            return price
+        else:
+            print(f"❌ FinMind 無法取得 {stock_id} 股價, msg={data.get('msg')}")
+            return None
+    except Exception as e:
+        print(f"❌ FinMind API 失敗: {e}")
+        return None
+
 
 def get_current_price(stock_id: str):
     """
     嘗試用 yfinance / twstock / twse API / FinMind 取得股價
     """
-
-    # 1️⃣ yfinance .TW
+    # yfinance .TW
     try:
         ticker = yf.Ticker(f"{stock_id}.TW")
         data = ticker.history(period="1d")
@@ -25,7 +52,7 @@ def get_current_price(stock_id: str):
     except Exception as e:
         print(f"❌ yfinance {stock_id}.TW 失敗: {e}")
 
-    # 2️⃣ yfinance .TWO
+    # yfinance .TWO
     try:
         ticker = yf.Ticker(f"{stock_id}.TWO")
         data = ticker.history(period="1d")
@@ -36,7 +63,7 @@ def get_current_price(stock_id: str):
     except Exception as e:
         print(f"❌ yfinance {stock_id}.TWO 失敗: {e}")
 
-    # 3️⃣ twstock
+    # twstock
     try:
         stock = twstock.realtime.get(stock_id)
         if stock and stock.get("success"):
@@ -49,10 +76,10 @@ def get_current_price(stock_id: str):
     except Exception as e:
         print(f"❌ twstock 取得 {stock_id} 失敗: {e}")
 
-    # 4️⃣ TWSE API
+    # TWSE API
     try:
         url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{stock_id}.tw"
-        r = requests.get(url, timeout=5, verify=False)  # 忽略 SSL 警告
+        r = requests.get(url, timeout=5, verify=False)
         data = r.json()
         if "msgArray" in data and len(data["msgArray"]) > 0:
             price = data["msgArray"][0].get("z")
@@ -64,38 +91,13 @@ def get_current_price(stock_id: str):
     except Exception as e:
         print(f"❌ twse api 取得 {stock_id} 失敗: {e}")
 
-    # 5️⃣ FinMind (收盤價)
-    try:
-        today = datetime.datetime.now().strftime("%Y-%m-%d")
-        params = {
-            "dataset": "TaiwanStockPrice",
-            "data_id": stock_id,
-            "start_date": today,
-        }
-        if FINMIND_TOKEN:
-            params["token"] = FINMIND_TOKEN
-
-        r = requests.get(FINMIND_URL, params=params, timeout=5)
-        data = r.json()
-        if "data" in data and len(data["data"]) > 0:
-            last = data["data"][-1]
-            current_price = float(last["close"])
-            print(f"✅ {stock_id} (FinMind) 收盤價: {current_price}")
-            return current_price
-        else:
-            print(f"❌ FinMind 無法取得 {stock_id} 股價, msg={data.get('msg')}")
-    except Exception as e:
-        print(f"❌ FinMind 取得 {stock_id} 失敗: {e}")
-
-    print(f"⚠️ 無法取得 {stock_id} 任何股價")
-    return None
+    # FinMind fallback
+    return get_price_from_finmind(stock_id)
 
 
 def check_price(stock_name, operator, target_price, current_price=None):
     """
     比對價格條件
-    - 會優先用 DB 傳進來的 current_price
-    - 如果沒給就去抓最新股價
     """
     try:
         if current_price is None:
@@ -105,7 +107,9 @@ def check_price(stock_name, operator, target_price, current_price=None):
             print(f"⚠️ 無法取得 {stock_name} 現價，跳過檢查")
             return False
 
-        print(f"🔍 檢查 {stock_name} | 現價: {current_price} | 目標: {target_price} | 條件: {operator}")
+        print(
+            f"🔍 檢查 {stock_name} | 現價: {current_price} | 目標: {target_price} | 條件: {operator}"
+        )
 
         if operator == "greater_than":
             return current_price > target_price
