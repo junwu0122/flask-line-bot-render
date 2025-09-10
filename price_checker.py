@@ -17,14 +17,13 @@ def get_price_from_finmind(stock_id: str):
         url = "https://api.finmindtrade.com/api/v4/data"
         today = datetime.today().strftime("%Y-%m-%d")
         yesterday = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
-
         headers = {"authorization": f"Bearer {FINMIND_TOKEN}"}
 
-        # 先查今天
+        # 嘗試今天
         params = {
             "dataset": "TaiwanStockPrice",
             "stock_id": stock_id,
-            "start_date": today,  # ✅ 正確參數
+            "start_date": today,
         }
         r = requests.get(url, params=params, headers=headers, timeout=10)
         data = r.json()
@@ -33,7 +32,7 @@ def get_price_from_finmind(stock_id: str):
             print(f"✅ {stock_id} (FinMind 今日) 收盤價: {price}")
             return price
 
-        # 如果今天查不到，就查昨天
+        # 如果今天沒有，再查昨天
         params["start_date"] = yesterday
         r = requests.get(url, params=params, headers=headers, timeout=10)
         data = r.json()
@@ -53,6 +52,8 @@ def get_current_price(stock_id: str):
     """
     嘗試用 yfinance / twstock / twse API / FinMind 取得股價
     """
+    current_price = None
+
     # yfinance .TW
     try:
         ticker = yf.Ticker(f"{stock_id}.TW")
@@ -60,51 +61,59 @@ def get_current_price(stock_id: str):
         if not data.empty:
             current_price = round(data["Close"].iloc[-1], 2)
             print(f"✅ {stock_id}.TW (yfinance) 現價: {current_price}")
-            return current_price
     except Exception as e:
         print(f"❌ yfinance {stock_id}.TW 失敗: {e}")
 
     # yfinance .TWO
-    try:
-        ticker = yf.Ticker(f"{stock_id}.TWO")
-        data = ticker.history(period="1d")
-        if not data.empty:
-            current_price = round(data["Close"].iloc[-1], 2)
-            print(f"✅ {stock_id}.TWO (yfinance) 現價: {current_price}")
-            return current_price
-    except Exception as e:
-        print(f"❌ yfinance {stock_id}.TWO 失敗: {e}")
+    if current_price is None:
+        try:
+            ticker = yf.Ticker(f"{stock_id}.TWO")
+            data = ticker.history(period="1d")
+            if not data.empty:
+                current_price = round(data["Close"].iloc[-1], 2)
+                print(f"✅ {stock_id}.TWO (yfinance) 現價: {current_price}")
+        except Exception as e:
+            print(f"❌ yfinance {stock_id}.TWO 失敗: {e}")
 
     # twstock
-    try:
-        stock = twstock.realtime.get(stock_id)
-        if stock and stock.get("success"):
-            price = stock["realtime"].get("latest_trade_price")
-            if price and price != "-":
-                current_price = float(price)
-                print(f"✅ {stock_id} (twstock) 現價: {current_price}")
-                return current_price
-        print(f"❌ twstock 無法取得 {stock_id} 即時股價")
-    except Exception as e:
-        print(f"❌ twstock 取得 {stock_id} 失敗: {e}")
+    if current_price is None:
+        try:
+            stock = twstock.realtime.get(stock_id)
+            if stock and stock.get("success"):
+                price = stock["realtime"].get("latest_trade_price")
+                if price and price != "-":
+                    current_price = float(price)
+                    print(f"✅ {stock_id} (twstock) 現價: {current_price}")
+            else:
+                print(f"❌ twstock 無法取得 {stock_id} 即時股價")
+        except Exception as e:
+            print(f"❌ twstock 取得 {stock_id} 失敗: {e}")
 
     # TWSE API
-    try:
-        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{stock_id}.tw"
-        r = requests.get(url, timeout=5, verify=False)
-        data = r.json()
-        if "msgArray" in data and len(data["msgArray"]) > 0:
-            price = data["msgArray"][0].get("z")
-            if price and price != "-":
-                current_price = float(price)
-                print(f"✅ {stock_id} (twse api) 現價: {current_price}")
-                return current_price
-        print(f"❌ twse api 無法取得 {stock_id} 即時股價")
-    except Exception as e:
-        print(f"❌ twse api 取得 {stock_id} 失敗: {e}")
+    if current_price is None:
+        try:
+            url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{stock_id}.tw"
+            r = requests.get(url, timeout=5, verify=False)
+            data = r.json()
+            if "msgArray" in data and len(data["msgArray"]) > 0:
+                price = data["msgArray"][0].get("z")
+                if price and price != "-":
+                    current_price = float(price)
+                    print(f"✅ {stock_id} (twse api) 現價: {current_price}")
+            else:
+                print(f"❌ twse api 無法取得 {stock_id} 即時股價")
+        except Exception as e:
+            print(f"❌ twse api 取得 {stock_id} 失敗: {e}")
 
     # FinMind fallback
-    return get_price_from_finmind(stock_id)
+    if current_price is None:
+        current_price = get_price_from_finmind(stock_id)
+
+    # ✅ 自動更新 DB
+    if current_price is not None:
+        update_current_price(stock_id, current_price)
+
+    return current_price
 
 
 def check_price(stock_name, operator, target_price, current_price=None):
@@ -139,6 +148,4 @@ def refresh_and_update_price(stock_name):
     強制抓最新價並更新 DB
     """
     current_price = get_current_price(stock_name)
-    if current_price is not None:
-        update_current_price(stock_name, current_price)
     return current_price
