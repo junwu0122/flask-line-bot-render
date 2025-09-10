@@ -3,7 +3,7 @@ import os
 import yfinance as yf
 import requests
 import twstock
-from datetime import datetime
+from datetime import datetime, timedelta
 from stock_mongo import update_current_price
 
 FINMIND_TOKEN = os.getenv("FINMIND_TOKEN")
@@ -16,26 +16,37 @@ def get_price_from_finmind(stock_id: str):
     try:
         url = "https://api.finmindtrade.com/api/v4/data"
         today = datetime.today().strftime("%Y-%m-%d")
+        yesterday = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        headers = {"authorization": f"Bearer {FINMIND_TOKEN}"}
+
+        # 先查今天
         params = {
             "dataset": "TaiwanStockPrice",
             "stock_id": stock_id,
-            "start_date": today,   
+            "start_date": today,  # ✅ 正確參數
         }
-        headers = {"authorization": f"Bearer {FINMIND_TOKEN}"}
         r = requests.get(url, params=params, headers=headers, timeout=10)
         data = r.json()
-
         if data.get("msg") == "success" and len(data.get("data", [])) > 0:
             price = float(data["data"][-1]["close"])
-            print(f"✅ {stock_id} (FinMind) 收盤價: {price}")
+            print(f"✅ {stock_id} (FinMind 今日) 收盤價: {price}")
             return price
-        else:
-            print(f"❌ FinMind 無法取得 {stock_id} 股價, msg={data.get('msg')}")
-            return None
+
+        # 如果今天查不到，就查昨天
+        params["start_date"] = yesterday
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        data = r.json()
+        if data.get("msg") == "success" and len(data.get("data", [])) > 0:
+            price = float(data["data"][-1]["close"])
+            print(f"✅ {stock_id} (FinMind 昨日) 收盤價: {price}")
+            return price
+
+        print(f"❌ FinMind 無法取得 {stock_id} 股價, msg={data.get('msg')}")
+        return None
     except Exception as e:
         print(f"❌ FinMind API 失敗: {e}")
         return None
-
 
 
 def get_current_price(stock_id: str):
