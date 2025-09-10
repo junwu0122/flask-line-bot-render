@@ -1,4 +1,4 @@
-# 📈 Stock Alert Line Bot  
+# 📈 flask-line-bot-render  
 
 一個結合 **LINE Bot + Flask + MongoDB** 的股票價格提醒系統。  
 並將 **Web Service 架設在  Render 平台**\
@@ -26,7 +26,7 @@
 ---
 
 ## 📂 專案結構
-stock-alert-linebot/\
+flask-line-bot-render/\
 ├── app.py # Flask 主程式 (LINE webhook & 背景檢查)\
 ├── price_checker.py # 股價抓取邏輯 (yfinance / twstock)\
 ├── stock_mongo.py # MongoDB CRUD (新增、查詢、刪除提醒)\
@@ -39,8 +39,8 @@ stock-alert-linebot/\
 
 ### 1. Clone 專案
 ```bash
-git clone https://github.com/your-username/stock-alert-linebot.git
-cd stock-alert-linebot
+git clone https://github.com/your-username/flask-line-bot-render.git
+cd flask-line-bot-render
 ```
 ### 2. 安裝套件
 ```bash
