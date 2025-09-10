@@ -17,9 +17,10 @@ try:
     client = MongoClient(
         MONGO_URI,
         tls=True,
-        tlsAllowInvalidCertificates=True,  # ⚠️ 臨時解法，建議之後換掉
-        serverSelectionTimeoutMS=5000
+        tlsAllowInvalidCertificates=True,
+        serverSelectionTimeoutMS=20000
     )
+
     client.admin.command("ping")
     print("[MongoDB] ✅ 連線成功")
 except Exception as e:
