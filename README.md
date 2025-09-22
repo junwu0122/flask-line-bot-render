@@ -39,7 +39,7 @@ flask-line-bot-render/\
 
 ### 1. Clone 專案
 ```bash
-git clone https://github.com/your-username/flask-line-bot-render.git
+git clone https://github.com/junwu0122/flask-line-bot-render.git
 cd flask-line-bot-render
 ```
 ### 2. 安裝套件
